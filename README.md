@@ -4,10 +4,10 @@
 
 **Describe a decision in one sentence, hand it raw text, get back a labeled dataset to fine-tune a fast decision model.**
 
+[![CI](https://github.com/mpetrenk/s1-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/mpetrenk/s1-ready/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![Dependencies: zero](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](pyproject.toml)
-[![Tests: 19 passing](https://img.shields.io/badge/tests-19%20passing-success.svg)](tests/)
 
 </div>
 
@@ -262,7 +262,7 @@ s1-ready prepare --use-case "..." --corpus tickets.txt \
 ```bash
 git clone https://github.com/mpetrenk/s1-ready.git
 pip install -e "s1-ready[dev]"
-cd s1-ready && PYTHONPATH=. python -m pytest -q    # 19 tests
+cd s1-ready && pytest -q    # 18 passed, 1 skipped (LLM-only test)
 ```
 
 ## License
