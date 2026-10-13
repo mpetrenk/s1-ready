@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Generated datasets (ad-hoc runs). The curated demo datasets under examples/
+# are whitelisted below so the case study is reproducible from a fresh clone.
+*.jsonl
+*.jsonl.spec.json
+
+# Keep the committed demo/case-study datasets.
+!examples/sms_spam.jsonl
+!examples/sms_spam.jsonl.spec.json
+!examples/sms_spam.test.jsonl
+!examples/sms_spam.test.jsonl.spec.json
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.DS_Store

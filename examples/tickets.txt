@@ -1,0 +1,15 @@
+Customer wants a refund for a double charge on their billing statement.
+My payment failed three times, please help with billing.
+How do I reset my password? I can't log in to my account.
+The app crashes every time I open the sales dashboard.
+I was charged twice this month, I need a refund immediately.
+Sales rep promised a discount that never applied, can you fix billing?
+Login page keeps saying my account is locked.
+Please cancel my subscription and refund the last payment.
+The integration with our CRM stopped working after the update.
+I need help understanding my invoice, the billing total looks wrong.
+Account access issue: two-factor codes never arrive.
+Requesting a refund, the product did not match the description.
+The export feature in the dashboard throws an error.
+Can someone from sales call me about enterprise pricing?
+My card was declined but I was still charged, refund needed.

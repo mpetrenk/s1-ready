@@ -1,0 +1,10 @@
+{
+  "use_case": "Decide whether an SMS message is spam",
+  "questions": [
+    {
+      "name": "is_spam",
+      "type": "bool",
+      "prompt": "Is this SMS message spam?"
+    }
+  ]
+}
