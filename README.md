@@ -66,21 +66,40 @@ dataset is the output.
 
 ## Does it actually work?
 
-Yes — one sentence + a public SMS corpus → a dataset → a Llama-3.1 fine-tune
-(**Unsloth**, 4-bit LoRA, free Colab T4). On a held-out, decontaminated test set:
+**The fine-tuning + export half is demonstrated. The automatic-labeling half is
+in progress — read this honestly.**
+
+A Llama-3.1 fine-tune (**Unsloth**, 4-bit LoRA, free Colab T4) on an SMS-spam
+dataset exported by `s1-ready`, evaluated on a held-out test set:
 
 ![SMS spam benchmark](examples/case_study/metrics_comparison.png)
 
 | model | accuracy | precision | recall | **F1** |
 |---|---:|---:|---:|---:|
-| **Llama-3.1 fine-tuned (`s1-ready` dataset)** | **0.991** | **0.961** | **0.969** | **0.965** |
+| **Llama-3.1 fine-tuned** | **0.991** | **0.961** | **0.969** | **0.965** |
 | Llama-3.1 base (no fine-tune) | 0.425 | 0.175 | 0.977 | 0.297 |
 | TF-IDF + Naive Bayes (classical baseline) | 0.970 | 0.839 | 0.938 | 0.886 |
 
-**F1 0.965 vs 0.297** for the untrained base model — the generated dataset is the
-entire difference. Full method + an honest "when is this worth it vs. classical
-ML" read: **[case study](examples/case_study/CASE_STUDY_sms_spam.md)** ·
-reproduce in **[Colab](examples/case_study/s1_spam_colab.ipynb)**.
+**What this shows:** fine-tuning on a clean, decontaminated, balanced dataset
+(F1 0.297 → 0.965) and that `s1-ready`'s split/dedup/export pipeline feeds Unsloth
+cleanly.
+
+**What this does *not* yet show — and it's the main promise:** these training
+labels are the **UCI corpus's human gold labels**, not labels `s1-ready`
+generated. So this result validates the *fine-tuning + export* path, not the
+*automatic labeling* path. Calling the dataset "s1-generated" would be false, so
+we don't.
+
+The end-to-end experiment that tests the real claim — **hide the labels, let
+`s1-ready` generate them with LLM teachers, then fine-tune and evaluate against
+the untouched human labels** — is scaffolded under
+**[`examples/case_study/auto_label/`](examples/case_study/auto_label/)** and
+awaiting a run on GPU + API keys. Until those numbers exist, treat the table
+above as a fine-tuning/export demo.
+
+Full method + honest "when is this worth it vs. classical ML":
+**[case study](examples/case_study/CASE_STUDY_sms_spam.md)** · reproduce in
+**[Colab](examples/case_study/s1_spam_colab.ipynb)**.
 
 ## Install
 
