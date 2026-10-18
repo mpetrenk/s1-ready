@@ -232,12 +232,20 @@ def main(argv=None) -> int:
               f"(dropped {len(review_idx)} low-agreement rows)")
     print(f"  report written: {report_path}")
 
-    # --- Export the two training arms + the shared test set ----------------
-    # Arm A: s1-LABELED train (what the library produced). This is the dataset
-    # whose fine-tune we actually care about.
+    # --- Export the training arms + the shared test set --------------------
+    # Arm A (raw): every s1-LABELED row, including low-agreement ones. Training
+    # on this = "trust the auto-labels blind" (the conservative test).
     auto_ds = Dataset(spec=SPEC, rows=list(labeled.rows))
     auto_out = os.path.join(args.out_dir, "train_auto.jsonl")
     auto_ds.to_conversational(auto_out, emit_helper=True)
+
+    # Arm A' (gated): the realistic workflow — drop the review-queue rows
+    # (teacher disagreement) and train only on the high-agreement labels. This
+    # is where the review queue should pay off downstream.
+    gated_rows = [r for i, r in enumerate(labeled.rows) if i not in review_idx]
+    gated_ds = Dataset(spec=SPEC, rows=gated_rows)
+    gated_out = os.path.join(args.out_dir, "train_auto_gated.jsonl")
+    gated_ds.to_conversational(gated_out, emit_helper=False)
 
     # Arm B: HUMAN-LABELED train from the SAME rows (reference arm). Same texts,
     # same order, gold swapped in — isolates label quality as the only variable.
@@ -264,9 +272,11 @@ def main(argv=None) -> int:
 
     tspam = sum(1 for lab, _ in test_pairs if lab == "spam")
     print("\n=== datasets written ===")
-    print(f"  Arm A (s1 auto-labeled train): {auto_out}  (+ .train.py, .spec.json)")
-    print(f"  Arm B (human-labeled train)  : {human_out}")
-    print(f"  Shared test (human gold)     : {test_out}  "
+    print(f"  Arm A  (auto, raw     ): {auto_out}  (+ .train.py, .spec.json)")
+    print(f"  Arm A' (auto, gated   ): {gated_out}  "
+          f"({len(gated_rows)} rows, dropped {len(review_idx)} low-agreement)")
+    print(f"  Arm B  (human-labeled ): {human_out}")
+    print(f"  Shared test (human gold): {test_out}  "
           f"({tspam} spam / {len(test_pairs) - tspam} ham, disjoint)")
     print("\nNext: fine-tune on each train arm, then run eval_four_way.py on the "
           "shared test set. See auto_label/README.md.")

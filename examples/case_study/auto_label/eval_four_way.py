@@ -128,21 +128,32 @@ def summarize(results: Dict[str, Dict[str, float]]) -> str:
             "|---|---:|---:|---:|---:|"]
     labels = {
         "base": "Base (no fine-tune)",
-        "ft_auto": "Fine-tuned on s1-ready AUTO labels",
+        "ft_auto": "Fine-tuned on AUTO labels (raw, all rows)",
+        "ft_auto_gated": "Fine-tuned on AUTO labels (agreement-gated)",
         "ft_human": "Fine-tuned on HUMAN labels",
         "classical": "TF-IDF + Naive Bayes",
     }
-    for key in ("ft_auto", "ft_human", "base", "classical"):
+    for key in ("ft_auto", "ft_auto_gated", "ft_human", "base", "classical"):
         if key in results:
             m = results[key]
             rows.append(f"| {labels[key]} | {m['accuracy']} | {m['precision']} "
                         f"| {m['recall']} | {m['f1']} |")
     out = "\n".join(rows)
-    if "ft_auto" in results and "ft_human" in results:
-        gap = round(results["ft_human"]["f1"] - results["ft_auto"]["f1"], 4)
-        out += (f"\n\n**Price of automation (F1):** human-label FT − auto-label FT "
-                f"= {gap:+.4f}. Near zero means s1-ready's automatic labels train "
-                f"a model as good as human labels.")
+
+    # Best available auto arm (gated preferred) vs. human reference.
+    best_auto = "ft_auto_gated" if "ft_auto_gated" in results else "ft_auto"
+    if best_auto in results and "ft_human" in results:
+        gap = round(results["ft_human"]["f1"] - results[best_auto]["f1"], 4)
+        which = "gated" if best_auto == "ft_auto_gated" else "raw"
+        out += (f"\n\n**Price of automation (F1):** human-label FT − {which} "
+                f"auto-label FT = {gap:+.4f}. Near zero means s1-ready's automatic "
+                f"labels train a model as good as human labels.")
+    # Downstream payoff of the review queue.
+    if "ft_auto_gated" in results and "ft_auto" in results:
+        lift = round(results["ft_auto_gated"]["f1"] - results["ft_auto"]["f1"], 4)
+        out += (f"\n\n**Review-queue payoff (F1):** gated − raw auto = {lift:+.4f}. "
+                f"Positive means dropping the disagreement rows before training "
+                f"produced a better model.")
     return out
 
 
