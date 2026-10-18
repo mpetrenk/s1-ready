@@ -47,13 +47,16 @@ import json
 import os
 import random
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Tuple
 
 # Import s1-ready from the installed package (pip install -e .) — this is the
 # library doing the actual labeling, which is the whole point of the study.
 from s1_ready.forge import DataForge
 from s1_ready.gates import Dataset
-from s1_ready.labeler import Labeler
+from s1_ready.labeler import Labeler, LabeledRows
 from s1_ready.types import Question, QuestionType, Row, Spec
 
 
@@ -168,6 +171,16 @@ def main(argv=None) -> int:
         help="rows with min agreement below this go to the review queue; "
         "label quality is reported with and without them.",
     )
+    p.add_argument(
+        "--balance", action="store_true",
+        help="down-sample ham to match spam in the TRAIN labeling set (after "
+        "--limit). The test set keeps its natural class ratio.",
+    )
+    p.add_argument(
+        "--workers", type=int, default=8,
+        help="concurrent teacher calls (API labeling is I/O-bound; 8 is ~8x "
+        "faster than serial). Lower it if you hit rate limits.",
+    )
     args = p.parse_args(argv)
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -177,6 +190,17 @@ def main(argv=None) -> int:
         print(f"no (label, text) pairs read from {args.tsv}", file=sys.stderr)
         return 2
     train_pairs, test_pairs = stratified_split(pairs, args.holdout, args.seed)
+
+    # Optionally balance the TRAIN set (down-sample ham to spam count) BEFORE
+    # the limit, so a bounded run still sees both classes. Deterministic by seed.
+    if args.balance:
+        rng = random.Random(args.seed)
+        spam = [p for p in train_pairs if p[0] == "spam"]
+        ham = [p for p in train_pairs if p[0] == "ham"]
+        k = min(len(spam), len(ham))
+        rng.shuffle(spam); rng.shuffle(ham)
+        train_pairs = spam[:k] + ham[:k]
+        rng.shuffle(train_pairs)
     if args.limit > 0:
         train_pairs = train_pairs[: args.limit]
 
@@ -186,13 +210,39 @@ def main(argv=None) -> int:
 
     print(f"train rows to label: {len(train_texts)}  "
           f"(hidden gold: {sum(hidden_gold)} spam / {len(hidden_gold) - sum(hidden_gold)} ham)")
-    print(f"teacher(s): {args.teacher}")
+    print(f"teacher(s): {args.teacher}  |  workers: {args.workers}")
 
     # --- THE STEP UNDER TEST: s1-ready generates the labels ----------------
+    # We reuse the library's Labeler for its per-row logic + aggregation, but
+    # drive it CONCURRENTLY with a progress counter: the serial path makes one
+    # blocking API call at a time (N_rows * N_teachers round-trips), which is
+    # unusably slow and silent for thousands of rows. Each row is independent,
+    # so a thread pool gives a near-linear speedup on I/O-bound calls.
     forge = DataForge(SPEC).ingest(train_texts)
     labeler = Labeler(teacher=args.teacher)
-    labeled = labeler.label(forge)  # LabeledRows
+    states = list(forge.states)
+    n = len(states)
+    rows: List = [None] * n
+    done = 0
+    t0 = time.time()
+    lock = threading.Lock()
 
+    def _label_one(i):
+        return i, labeler._label_state(states[i].text, SPEC, labeler.vote)
+
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as ex:
+        for i, row in ex.map(_label_one, range(n)):
+            row.synthetic = states[i].synthetic
+            rows[i] = row
+            with lock:
+                done += 1
+                if done % 50 == 0 or done == n:
+                    rate = done / max(1e-6, time.time() - t0)
+                    eta = (n - done) / max(1e-6, rate)
+                    print(f"  labeled {done}/{n}  ({rate:.1f} rows/s, ETA {eta:5.0f}s)",
+                          flush=True)
+
+    labeled = LabeledRows(spec=SPEC, rows=rows)
     generated = [bool(r.gold["is_spam"]) for r in labeled.rows]
 
     # --- Measure label quality vs. hidden gold -----------------------------
