@@ -96,11 +96,44 @@ price-of-automation table. Verify the scorer offline first:
 python eval_four_way.py --selftest     # checks the metric math, no data/models
 ```
 
-## Status
+## Results — label quality (measured)
 
-**Not yet run at scale.** The driver, scorer, and notebook are complete and the
-scoring math is unit-tested, but the headline four-way numbers require a GPU +
-API-key run. When that run lands, its `label_quality.json` and
-`four_way_results.json` get committed here and the top-level README's "Does it
-actually work?" table is updated to the auto-label numbers. Until then the repo
-says plainly that only the human-label fine-tuning path is demonstrated.
+Ran on the full UCI train split (4,129 messages after dedup, 514 spam / 3,615
+ham), two teachers: `openai:gpt-4o-mini` + `anthropic:claude-haiku-5-5`. The
+hidden human labels are the answer key; positive class = spam.
+
+| | rows | precision | recall | F1 | disagreement |
+|---|---:|---:|---:|---:|---:|
+| **Raw consensus labels** | 4,129 | 0.450 | 0.977 | 0.616 | 15.1% |
+| **After review** (drop disagreements) | 3,556 | 0.846 | 0.984 | **0.910** | 2.8% |
+
+**What this shows:** a single-pass LLM label is mediocre — raw auto-labels hit
+only **F1 0.62**, over-flagging ham as spam (613 false positives). But the
+**agreement signal localizes those errors**: dropping the 573 rows (14%) where
+the two teachers disagreed removes 523 of the 613 false positives, taking
+precision **0.45 → 0.85** and **F1 0.62 → 0.91** — with recall essentially
+unchanged (0.98). This is the review queue doing its job: it does not fix labels,
+it tells you *which* 14% to check (or discard) so the remaining 86% is near-clean
+training data.
+
+**Honest caveats:**
+- *A filter, not a correction.* The 0.91 is on the 3,556 kept rows; the 573
+  flagged rows are set aside, not repaired. A human reviewing them recovers more.
+- *~90 false positives remain* in the kept set (precision 0.85). Good, not perfect
+  — a model trained on it inherits that.
+- *Both teachers share an over-flagging bias*, so raw-consensus precision barely
+  beat a single teacher (0.45 vs 0.41 at n=300). Consensus helped only via the
+  **disagreement signal**, not by averaging. On this task that's what mattered.
+- *SMS spam is lexically easy*, which inflates recall. The gate's value should be
+  larger on harder, more ambiguous tasks — untested here.
+
+Reproduce: `label_sms.py SMSSpamCollection --teacher openai:gpt-4o-mini anthropic:claude-haiku-5-5 --out-dir out_full`
+(the committed `out_full/label_quality.json` holds these numbers).
+
+## Status — fine-tune arm pending
+
+Label quality is measured (above). The **four-way fine-tune comparison**
+(base / FT-auto / FT-human / classical) still needs a GPU run via
+[`auto_label_colab.ipynb`](auto_label_colab.ipynb) to answer the last question:
+does training on these agreement-gated auto-labels rival training on human
+labels? Those numbers get committed here when the run lands.

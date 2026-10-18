@@ -23,3 +23,12 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .DS_Store
+
+# Auto-label experiment: downloaded corpus + regenerable run outputs.
+# The committed out_full/label_quality.json (a .json, not .jsonl) is the one
+# artifact we keep; everything else here is large or regenerable.
+examples/case_study/auto_label/SMSSpamCollection
+examples/case_study/auto_label/sms.zip
+examples/case_study/auto_label/out/
+examples/case_study/auto_label/out2/
+examples/case_study/auto_label/**/*.train.py

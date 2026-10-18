@@ -1,0 +1,37 @@
+{
+  "teacher": [
+    "openai:gpt-4o-mini",
+    "anthropic:claude-haiku-5-5"
+  ],
+  "n_train": 4129,
+  "review_threshold": 0.7,
+  "n_sent_to_review_queue": 573,
+  "label_quality_all_rows": {
+    "n": 4129,
+    "accuracy": 0.8486,
+    "precision_spam": 0.4502,
+    "recall_spam": 0.9767,
+    "f1_spam": 0.6163,
+    "disagreement_rate": 0.1514,
+    "tp": 502,
+    "fp": 613,
+    "tn": 3002,
+    "fn": 12
+  },
+  "label_quality_after_review": {
+    "n": 3556,
+    "accuracy": 0.9724,
+    "precision_spam": 0.8464,
+    "recall_spam": 0.9841,
+    "f1_spam": 0.9101,
+    "disagreement_rate": 0.0276,
+    "tp": 496,
+    "fp": 90,
+    "tn": 2962,
+    "fn": 8
+  },
+  "agreement_summary": {
+    "is_spam": 0.931
+  },
+  "note": "label_quality_* compares s1-ready's GENERATED train labels against the hidden UCI human labels. 'after_review' excludes rows whose teacher agreement fell below review_threshold (the rows a human would check). Positive class = spam."
+}

@@ -66,8 +66,9 @@ dataset is the output.
 
 ## Does it actually work?
 
-**The fine-tuning + export half is demonstrated. The automatic-labeling half is
-in progress — read this honestly.**
+**Two results below: (1) fine-tuning + export on human labels, and (2) measured
+automatic-labeling quality. The auto-label *fine-tune* comparison is the one
+piece still pending. Read it honestly.**
 
 A Llama-3.1 fine-tune (**Unsloth**, 4-bit LoRA, free Colab T4) on an SMS-spam
 dataset exported by `s1-ready`, evaluated on a held-out test set:
@@ -90,12 +91,27 @@ generated. So this result validates the *fine-tuning + export* path, not the
 *automatic labeling* path. Calling the dataset "s1-generated" would be false, so
 we don't.
 
-The end-to-end experiment that tests the real claim — **hide the labels, let
-`s1-ready` generate them with LLM teachers, then fine-tune and evaluate against
-the untouched human labels** — is scaffolded under
-**[`examples/case_study/auto_label/`](examples/case_study/auto_label/)** and
-awaiting a run on GPU + API keys. Until those numbers exist, treat the table
-above as a fine-tuning/export demo.
+### Automatic labeling — measured
+
+The headline promise (label an *unlabeled* corpus) is now tested, not just
+scaffolded. Hiding the UCI human labels and having `s1-ready` generate them with
+two teachers (`gpt-4o-mini` + `claude-haiku-5-5`), scored against the hidden gold
+on 4,129 messages:
+
+| labels | precision | recall | F1 |
+|---|---:|---:|---:|
+| raw consensus | 0.45 | 0.98 | 0.62 |
+| **after agreement-gated review** (14% flagged) | **0.85** | 0.98 | **0.91** |
+
+A single-pass LLM label is mediocre (F1 0.62); the **agreement signal flags the
+14% of rows where the errors concentrate**, and the remaining 86% is near-clean
+(F1 0.91). That is the review queue earning its place. Full method, caveats, and
+the still-pending fine-tune comparison:
+**[`auto_label/`](examples/case_study/auto_label/README.md)**.
+
+> Still honest about what's left: this measures *label quality*, not a trained
+> model. Whether a fine-tune on these auto-labels rivals one on human labels is
+> the GPU step, still pending.
 
 Full method + honest "when is this worth it vs. classical ML":
 **[case study](examples/case_study/CASE_STUDY_sms_spam.md)** · reproduce in
