@@ -83,13 +83,22 @@ def load_conversational(path: str):
 
 
 def _parse_is_spam(answer: str) -> bool:
-    """Pull the is_spam boolean out of an assistant answer string."""
+    """Pull the is_spam boolean out of an assistant answer string.
+
+    s1-ready's conversational export writes the answer as ``is_spam: true`` /
+    ``is_spam: false`` (NOT JSON). Strip the ``is_spam`` field name first so the
+    literal "spam" inside it can't be mistaken for the answer, then read the
+    boolean. A JSON ``{"is_spam": true}`` form is also accepted as a fallback.
+    """
+    a = answer.strip().lower().replace("is_spam", "").replace("_", " ")
+    m = re.search(r"\b(true|false|yes|no)\b", a)
+    if m:
+        return m.group(1) in ("true", "yes")
     try:
         obj = json.loads(re.search(r"\{.*\}", answer, re.DOTALL).group())
         return bool(obj.get("is_spam"))
     except Exception:
-        a = answer.strip().lower()
-        return a.startswith(("true", "yes", "spam"))
+        return False
 
 
 # --- arms ------------------------------------------------------------------
@@ -166,9 +175,15 @@ def _selftest() -> int:
     assert m["accuracy"] == round(5 / 8, 4), m
     assert m["precision"] == round(2 / 4, 4), m
     assert m["recall"] == round(2 / 3, 4), m
+    # The export format: "is_spam: true/false". The field name contains the
+    # literal "spam" -- these cases guard against reading it as the answer.
+    assert _parse_is_spam("is_spam: true") is True
+    assert _parse_is_spam("is_spam: false") is False
+    assert _parse_is_spam("IS_SPAM: FALSE") is False
+    assert _parse_is_spam("is_spam:true") is True
+    # JSON fallback still works.
     assert _parse_is_spam('{"is_spam": true}') is True
     assert _parse_is_spam('{"is_spam": false}') is False
-    assert _parse_is_spam("spam") is True
     print("eval_four_way selftest: OK")
     return 0
 
