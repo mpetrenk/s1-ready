@@ -105,13 +105,25 @@ on 4,129 messages:
 
 A single-pass LLM label is mediocre (F1 0.62); the **agreement signal flags the
 14% of rows where the errors concentrate**, and the remaining 86% is near-clean
-(F1 0.91). That is the review queue earning its place. Full method, caveats, and
-the still-pending fine-tune comparison:
-**[`auto_label/`](examples/case_study/auto_label/README.md)**.
+(F1 0.91). That is the review queue earning its place.
 
-> Still honest about what's left: this measures *label quality*, not a trained
-> model. Whether a fine-tune on these auto-labels rivals one on human labels is
-> the GPU step, still pending.
+And it carries through to a **trained model**: fine-tuning Llama-3.1-8B on the
+auto-labels (balanced ~1k rows) and scoring on the untouched human-labeled test
+set —
+
+| trained on | F1 |
+|---|---:|
+| base (no fine-tune) | 0.53 |
+| s1-ready auto labels (raw) | 0.79 |
+| **s1-ready auto labels (agreement-gated)** | **0.84** |
+| human labels (ceiling) | 0.94 |
+
+Fine-tuning on the auto-labels works (0.53 → 0.84), the agreement gate improves
+the trained model (+0.06 F1 over raw), and there's an **honest −0.10 F1 price vs.
+human labels** — automatic labeling got ~90% of the way, not all of it. (On this
+lexically-easy task a classical TF-IDF baseline hits 0.91; the LLM route should
+pay off more on harder tasks, untested here.) Full method, caveats, and the
+five-way table: **[`auto_label/`](examples/case_study/auto_label/README.md)**.
 
 Full method + honest "when is this worth it vs. classical ML":
 **[case study](examples/case_study/CASE_STUDY_sms_spam.md)** · reproduce in

@@ -130,10 +130,40 @@ training data.
 Reproduce: `label_sms.py SMSSpamCollection --teacher openai:gpt-4o-mini anthropic:claude-haiku-5-5 --out-dir out_full`
 (the committed `out_full/label_quality.json` holds these numbers).
 
-## Status — fine-tune arm pending
+## Results — downstream fine-tune (measured)
 
-Label quality is measured (above). The **four-way fine-tune comparison**
-(base / FT-auto / FT-human / classical) still needs a GPU run via
-[`auto_label_colab.ipynb`](auto_label_colab.ipynb) to answer the last question:
-does training on these agreement-gated auto-labels rival training on human
-labels? Those numbers get committed here when the run lands.
+Does a model *trained* on the auto-labels actually work? Five arms, all scored on
+the same untouched human-labeled test set (1,031 messages, 128 spam / 903 ham).
+The LLM arms are Llama-3.1-8B (Unsloth, 4-bit LoRA, 2 epochs). Training sets are
+the **balanced ~1,000-row** run (`out_balanced/`), so these numbers are a
+separate measurement from the 4,129-row label-quality table above.
+
+| arm | train labels | F1 | precision | recall |
+|---|---|---:|---:|---:|
+| Base (no fine-tune) | — (zero-shot) | 0.528 | 0.363 | 0.969 |
+| FT — auto labels (raw) | s1-ready, all rows | 0.785 | 0.653 | 0.984 |
+| **FT — auto labels (gated)** | **s1-ready, agreement-gated** | **0.844** | 0.734 | 0.992 |
+| FT — human labels | human gold (ceiling) | 0.940 | 0.906 | 0.977 |
+| TF-IDF + Naive Bayes | human gold (classical) | 0.912 | 0.934 | 0.891 |
+
+**Three findings:**
+
+1. **Fine-tuning on s1-ready's auto-labels works.** Base F1 0.53 → gated-auto
+   0.84. The generated labels carry real training signal — this is the direct
+   test of the library's promise that the human-label case study never made.
+2. **The review queue pays off in the trained model, not just on paper.**
+   Gated beats raw auto by **+0.059 F1** (precision 0.65 → 0.73). Dropping the
+   rows where the two teachers disagreed produced a measurably better *model*.
+3. **There is an honest price of automation: −0.096 F1.** Gated-auto (0.844)
+   still trails human labels (0.940). Automatic labeling got ~90% of the way to
+   human labels here — useful, not free. We do **not** claim "as good as human."
+
+**And the baseline that keeps us honest:** classical TF-IDF + Naive Bayes (0.912)
+beats *both* auto arms and trails human by only 0.03. On lexically-easy SMS spam,
+a 20-line classical model is hard to beat — the LLM route's payoff should grow on
+harder tasks (nuance, many classes, paraphrase) where bag-of-words collapses, but
+that is **untested here** and we don't claim it.
+
+Numbers live in the committed `out_full/four_way_results.json`. Reproduce via
+[`auto_label_colab.ipynb`](auto_label_colab.ipynb) (GPU) after generating the
+balanced datasets with `label_sms.py ... --balance --limit 1000`.

@@ -1,0 +1,7 @@
+{
+  "classical": {"accuracy": 0.9787, "precision": 0.9344, "recall": 0.8906, "f1": 0.912, "tp": 114, "fp": 8, "tn": 895, "fn": 14},
+  "base": {"accuracy": 0.7847, "precision": 0.3626, "recall": 0.9688, "f1": 0.5277, "tp": 124, "fp": 218, "tn": 685, "fn": 4},
+  "ft_auto": {"accuracy": 0.9331, "precision": 0.6528, "recall": 0.9844, "f1": 0.785, "tp": 126, "fp": 67, "tn": 836, "fn": 2},
+  "ft_auto_gated": {"accuracy": 0.9544, "precision": 0.7341, "recall": 0.9922, "f1": 0.8439, "tp": 127, "fp": 46, "tn": 857, "fn": 1},
+  "ft_human": {"accuracy": 0.9845, "precision": 0.9058, "recall": 0.9766, "f1": 0.9398, "tp": 125, "fp": 13, "tn": 890, "fn": 3}
+}
