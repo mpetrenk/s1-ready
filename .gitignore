@@ -31,4 +31,5 @@ examples/case_study/auto_label/SMSSpamCollection
 examples/case_study/auto_label/sms.zip
 examples/case_study/auto_label/out/
 examples/case_study/auto_label/out2/
+examples/case_study/auto_label/out_balanced/
 examples/case_study/auto_label/**/*.train.py
