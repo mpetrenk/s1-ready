@@ -96,6 +96,59 @@ class Question:
         return d
 
 
+_BOOL_TRUE = {"true", "yes", "y", "t", "1"}
+_BOOL_FALSE = {"false", "no", "n", "f", "0"}
+
+
+def validate_answer(answer: Any, q: "Question") -> Any:
+    """Return a canonical, validated answer for `q`, or UNPARSEABLE.
+
+    This is the single strict boundary every teacher answer passes through
+    (provider strings AND values returned by user callables). It requires one
+    unambiguous answer and rejects everything else to the review queue -- it
+    does NOT search noisy text for an affirmative token or an option substring.
+    So "not true", "false, not true", "billing or sales; cannot decide", and
+    "unsupported" all return UNPARSEABLE rather than a confident wrong label.
+
+    Accepts a value that is already the right Python type (e.g. a callable that
+    returns True / 3.0 / "billing") or a raw string to normalize.
+    """
+    if answer is UNPARSEABLE or answer is None:
+        return UNPARSEABLE
+
+    if q.type is QuestionType.BOOL:
+        if isinstance(answer, bool):
+            return answer
+        s = str(answer).strip().lower()
+        if s in _BOOL_TRUE:
+            return True
+        if s in _BOOL_FALSE:
+            return False
+        return UNPARSEABLE
+
+    if q.type is QuestionType.SCORE:
+        # The whole answer must be a single number (optionally int/float),
+        # nothing else. "3" ok; "urgency is 3" / "3 or 4" -> UNPARSEABLE.
+        s = str(answer).strip()
+        try:
+            val = float(s)
+        except (TypeError, ValueError):
+            return UNPARSEABLE
+        lo, hi = q.score_range or [1.0, 5.0]
+        return val if lo <= val <= hi else UNPARSEABLE
+
+    # CHOICE: the normalized answer must EQUAL an option exactly (case/space
+    # insensitive). No substring matching -- "unsupported" != "support".
+    if q.type is QuestionType.CHOICE:
+        s = str(answer).strip().lower()
+        for opt in q.options:
+            if s == opt.strip().lower():
+                return opt
+        return UNPARSEABLE
+
+    return UNPARSEABLE
+
+
 @dataclass
 class Spec:
     """The inferred decision schema for a use case.

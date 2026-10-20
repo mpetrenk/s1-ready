@@ -8,16 +8,16 @@ unlabeled corpus* well enough to train a decision model.
 This experiment tests exactly that.
 
 > **Provenance.** The numbers on this page were produced at commit `9b5fdc2`,
-> before the labeling-hardening change in `adae406` (fail-closed teachers +
-> validate-or-flag answer parsing). That change makes unparseable teacher
-> replies abstain and lower a row's agreement, instead of being silently coerced
-> to a label — so a re-run under the current code would shift the **auto-arm**
-> numbers modestly (the label-quality table and the FT-auto / FT-auto-gated
-> rows). The `ft_human` and `classical` arms are unaffected (they never use the
-> teacher path), and the experiment's conclusions — auto-labeling carries real
-> signal, gating helps, and there is a real price vs. human labels — do not
-> depend on the exact decimals. We kept the original numbers rather than
-> re-spending a GPU + API run to chase small shifts.
+> before the labeling-hardening changes (`adae406` fail-closed teachers +
+> validate-or-flag parsing, and a later stricter answer validator + training
+> export gate). Those changes alter how teacher replies are validated, so a
+> re-run under the current code would change which rows abstain or are gated
+> out, and therefore the **auto-arm** numbers (the label-quality table and the
+> FT-auto / FT-auto-gated rows). **The size and direction of that change are
+> unmeasured** — we have not re-run the paid labeling or GPU training. The
+> `ft_human` and `classical` arms do not use the teacher path. Keeping the
+> original historical numbers is deliberate; treat them as produced by the code
+> at `9b5fdc2`, not by the current `main`.
 
 ## The protocol
 

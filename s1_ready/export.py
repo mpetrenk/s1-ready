@@ -42,22 +42,51 @@ import json
 import os
 from typing import Any, Dict, List
 
+from .types import UNPARSEABLE
+
 _FORMATS = ("typed-decisions", "unsloth", "conversational", "raw")
 
 # Formats for which a train-helper script (Option C) can be generated.
 _HELPER_FORMATS = ("unsloth", "conversational")
 
 
+# Formats that produce a TRAINING TARGET (the model is trained on the gold
+# answer). These must never emit a row whose gold is missing/invalid, or the
+# fine-tune learns a literal "None" target. "typed-decisions" is the full
+# auditable record (keeps every row, incl. agreement) and is NOT gated here.
+_TRAINING_FORMATS = ("unsloth", "conversational", "raw")
+
+
+def row_has_valid_gold(dataset, row) -> bool:
+    """True iff every question has a schema-valid, non-missing gold answer.
+
+    Uses the same `Question.is_valid_answer` schema check the types enforce, and
+    rejects None / UNPARSEABLE. This is the gate that keeps unvalidated rows out
+    of training exports.
+    """
+    for q in dataset.spec.questions:
+        val = row.gold.get(q.name)
+        if val is None or val is UNPARSEABLE:
+            return False
+        if not q.is_valid_answer(val):
+            return False
+    return True
+
+
 def to_records(dataset, fmt: str = "typed-decisions") -> List[Dict[str, Any]]:
     if fmt not in _FORMATS:
         raise ValueError(f"unknown format {fmt!r}; expected one of {_FORMATS}")
+    rows = dataset.rows
+    # Gate training formats: drop rows without a valid gold target.
+    if fmt in _TRAINING_FORMATS:
+        rows = [r for r in rows if row_has_valid_gold(dataset, r)]
     if fmt == "typed-decisions":
-        return [_typed_record(dataset, r) for r in dataset.rows]
+        return [_typed_record(dataset, r) for r in rows]
     if fmt == "unsloth":
-        return [_unsloth_record(dataset, r) for r in dataset.rows]
+        return [_unsloth_record(dataset, r) for r in rows]
     if fmt == "conversational":
-        return [_conversational_record(dataset, r) for r in dataset.rows]
-    return [{"state": r.state, "gold": r.gold} for r in dataset.rows]
+        return [_conversational_record(dataset, r) for r in rows]
+    return [{"state": r.state, "gold": r.gold} for r in rows]
 
 
 def write_jsonl(
@@ -71,6 +100,17 @@ def write_jsonl(
     with open(path, "w", encoding="utf-8") as fh:
         for rec in records:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    # Report how many rows were excluded by the training-export gate, so a
+    # dropped-row count is never silent.
+    if fmt in _TRAINING_FORMATS:
+        excluded = len(dataset.rows) - len(records)
+        if excluded:
+            print(
+                f"[s1-ready] export {fmt}: wrote {len(records)} rows, "
+                f"excluded {excluded} with missing/invalid gold (kept out of "
+                f"training). Inspect them via review_queue() before relabeling."
+            )
 
     # Sidecar: persist the schema next to the data so the format is self-describing.
     spec_path = f"{path}.spec.json"

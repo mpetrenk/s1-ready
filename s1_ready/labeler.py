@@ -25,7 +25,7 @@ import statistics
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from .forge import DataForge
-from .types import UNPARSEABLE, QuestionType, Question, Row, Spec
+from .types import UNPARSEABLE, QuestionType, Question, Row, Spec, validate_answer
 
 # A teacher is anything that, given (state_text, question), returns an answer.
 Teacher = Callable[[str, Question], Any]
@@ -80,7 +80,11 @@ class Labeler:
         for q in spec.questions:
             per_teacher: Dict[str, Any] = {}
             for name, fn in self._teachers:
-                per_teacher[name] = fn(text, q)
+                # Validate EVERY teacher's answer at this single boundary, so a
+                # BYO callable obeys the same schema as a provider: anything
+                # that isn't exactly one valid answer becomes UNPARSEABLE (an
+                # abstention) rather than an ordinary gold label.
+                per_teacher[name] = validate_answer(fn(text, q), q)
             answer, score = self._aggregate(q, per_teacher, vote_mode)
             gold[q.name] = answer
             agreement[q.name] = score
@@ -119,6 +123,12 @@ class Labeler:
             base = max(0.0, 1.0 - spread)
             # Penalize agreement by the fraction of teachers that abstained.
             score = base * (len(nums) / total)
+            if vote_mode == "unanimous":
+                # Unanimous requires EVERY teacher to have produced the same
+                # valid number (no abstentions, zero spread); otherwise the row
+                # is unresolved -> agreement 0 -> review queue.
+                unanimous = len(nums) == total and max(nums) == min(nums)
+                score = 1.0 if unanimous else 0.0
             return round(mean, 3), round(score, 3)
 
         # CHOICE / BOOL: categorical vote over the valid answers only.
@@ -127,8 +137,15 @@ class Labeler:
         for v in norm:
             tally[v] = tally.get(v, 0) + 1
         winner, count = max(tally.items(), key=lambda kv: kv[1])
-        # Agreement is the winning fraction over ALL teachers (abstentions
-        # included), so unparseable votes lower it and surface the row.
+        if vote_mode == "unanimous":
+            # Confident only when ALL teachers concur on one valid answer: no
+            # abstentions and a single distinct value. Any dissent/abstention
+            # keeps the plurality winner as inspectable gold but forces
+            # agreement to 0 so the row is routed to review.
+            unanimous = len(values) == total and len(tally) == 1
+            return winner, 1.0 if unanimous else 0.0
+        # Majority: agreement is the winning fraction over ALL teachers
+        # (abstentions included), so unparseable votes lower it.
         frac = count / total
         return winner, round(frac, 3)
 
