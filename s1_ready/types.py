@@ -81,7 +81,7 @@ class Question:
                 val = float(answer)
             except (TypeError, ValueError):
                 return False
-            lo, hi = self.score_range or [0.0, 1.0]
+            lo, hi = self.score_range or DEFAULT_SCORE_RANGE
             return lo <= val <= hi
         return False
 
@@ -90,7 +90,7 @@ class Question:
         if self.type is QuestionType.CHOICE:
             d["options"] = list(self.options)
         if self.type is QuestionType.SCORE:
-            d["score_range"] = self.score_range or [0.0, 1.0]
+            d["score_range"] = self.score_range or list(DEFAULT_SCORE_RANGE)
         if self.prompt:
             d["prompt"] = self.prompt
         return d
@@ -98,6 +98,12 @@ class Question:
 
 _BOOL_TRUE = {"true", "yes", "y", "t", "1"}
 _BOOL_FALSE = {"false", "no", "n", "f", "0"}
+
+# Single source of truth for a SCORE question's default bounds when none is
+# given. Used by validate_answer, Question.is_valid_answer, and Question.to_dict
+# so validation, labeling, and the serialized schema never disagree (the P2a
+# bug was three different defaults).
+DEFAULT_SCORE_RANGE = [1.0, 5.0]
 
 
 def validate_answer(answer: Any, q: "Question") -> Any:
@@ -134,7 +140,7 @@ def validate_answer(answer: Any, q: "Question") -> Any:
             val = float(s)
         except (TypeError, ValueError):
             return UNPARSEABLE
-        lo, hi = q.score_range or [1.0, 5.0]
+        lo, hi = q.score_range or DEFAULT_SCORE_RANGE
         return val if lo <= val <= hi else UNPARSEABLE
 
     # CHOICE: the normalized answer must EQUAL an option exactly (case/space

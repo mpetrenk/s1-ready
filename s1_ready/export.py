@@ -42,7 +42,7 @@ import json
 import os
 from typing import Any, Dict, List
 
-from .types import UNPARSEABLE
+from .types import DEFAULT_SCORE_RANGE, UNPARSEABLE
 
 _FORMATS = ("typed-decisions", "unsloth", "conversational", "raw")
 
@@ -183,7 +183,7 @@ def _render_question(q) -> str:
     if q.type is QuestionType.BOOL:
         return f"{base} (true or false)"
     if q.type is QuestionType.SCORE:
-        lo, hi = q.score_range or [1.0, 5.0]
+        lo, hi = q.score_range or DEFAULT_SCORE_RANGE
         return f"{base} (score {lo}-{hi})"
     return base
 

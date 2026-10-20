@@ -205,3 +205,67 @@ def test_training_export_excludes_invalid_gold_rows():
         assert len(recs) == 1, fmt
     # ...while the auditable typed-decisions format keeps everything.
     assert len(to_records(ds, fmt="typed-decisions")) == 2
+
+
+# ---- 6. end-to-end consistency (validator -> aggregate -> export) ----------
+# These are the interaction regressions the reviewer flagged: each individual
+# fix was fine, but they disagreed across stages and silently dropped rows.
+
+def _export_count(spec, rows, fmt="unsloth"):
+    from s1_ready.gates import Dataset
+    from s1_ready.export import to_records
+    return len(to_records(Dataset(spec=spec, rows=rows), fmt=fmt))
+
+
+def test_p1_capitalized_choice_survives_to_export():
+    # "IT" must stay "IT" through aggregation so export's exact-membership
+    # check keeps the row (was lowercased to "it" -> 0 rows exported).
+    q = Question(name="dept", type=QuestionType.CHOICE, options=["IT", "HR"])
+    spec = Spec(use_case="route", questions=[q])
+    labeled = Labeler(teacher=lambda t, qq: "IT").label(
+        DataForge(spec).ingest(["printer broken"]))
+    assert labeled.rows[0].gold["dept"] == "IT"          # canonical, not "it"
+    assert _export_count(spec, labeled.rows) == 1        # not dropped
+
+
+def test_p2a_score_default_range_consistent_end_to_end():
+    # A score question with no explicit range: a teacher's 3 must be valid at
+    # label time AND survive export (defaults agreed now).
+    q = Question(name="urg", type=QuestionType.SCORE)    # no score_range
+    spec = Spec(use_case="urgency", questions=[q])
+    labeled = Labeler(teacher=lambda t, qq: 3).label(
+        DataForge(spec).ingest(["asap please"]))
+    assert labeled.rows[0].gold["urg"] == 3.0
+    assert q.is_valid_answer(3.0) is True
+    assert q.to_dict()["score_range"] == [1.0, 5.0]
+    assert _export_count(spec, labeled.rows) == 1
+
+
+def test_p2a_default_range_single_source():
+    from s1_ready.types import DEFAULT_SCORE_RANGE
+    q = Question(name="s", type=QuestionType.SCORE)
+    # Out-of-default value must be rejected by both validation and schema.
+    lo, hi = DEFAULT_SCORE_RANGE
+    assert q.is_valid_answer(hi) is True
+    assert q.is_valid_answer(hi + 1) is False
+
+
+def test_p2b_multiline_contradiction_is_unparseable():
+    b = Question(name="x", type=QuestionType.BOOL)
+    assert _coerce_answer("true\nfalse", b) is UNPARSEABLE
+    assert _coerce_answer("true\nActually, false.", b) is UNPARSEABLE
+    # A single clean line still validates.
+    assert _coerce_answer("true", b) is True
+    assert _coerce_answer("  true  ", b) is True
+
+
+def test_p2b_multiline_via_callable_through_labeler_flags_row():
+    # Full path: a provider-style multiline reply must abstain and route to
+    # review, not become a confident label.
+    b = Question(name="x", type=QuestionType.BOOL)
+    spec = Spec(use_case="spam?", questions=[b])
+    # Simulate a provider by routing a raw multiline string through _coerce.
+    teacher = lambda text, q: _coerce_answer("true\nfalse", q)
+    labeled = Labeler(teacher=teacher).label(DataForge(spec).ingest(["x"]))
+    assert labeled.rows[0].gold["x"] is None
+    assert labeled.rows[0] in labeled.review_queue(min_agreement=0.7)

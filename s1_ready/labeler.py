@@ -25,7 +25,15 @@ import statistics
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from .forge import DataForge
-from .types import UNPARSEABLE, QuestionType, Question, Row, Spec, validate_answer
+from .types import (
+    DEFAULT_SCORE_RANGE,
+    UNPARSEABLE,
+    QuestionType,
+    Question,
+    Row,
+    Spec,
+    validate_answer,
+)
 
 # A teacher is anything that, given (state_text, question), returns an answer.
 Teacher = Callable[[str, Question], Any]
@@ -117,7 +125,7 @@ class Labeler:
             if not nums:
                 return None, 0.0
             mean = statistics.fmean(nums)
-            lo, hi = (q.score_range or [1.0, 5.0])
+            lo, hi = (q.score_range or DEFAULT_SCORE_RANGE)
             span = (hi - lo) or 1.0
             spread = (max(nums) - min(nums)) / span
             base = max(0.0, 1.0 - spread)
@@ -131,12 +139,21 @@ class Labeler:
                 score = 1.0 if unanimous else 0.0
             return round(mean, 3), round(score, 3)
 
-        # CHOICE / BOOL: categorical vote over the valid answers only.
-        norm = [self._norm(v) for v in values]
+        # CHOICE / BOOL: categorical vote over the valid answers only. Tally by
+        # a normalized KEY (case/space-insensitive) so "IT" and "it" count as
+        # one, but keep the CANONICAL value a teacher actually returned as the
+        # gold answer. Every value already passed validate_answer, so for CHOICE
+        # it is the exact option string and for BOOL a real bool -- we must not
+        # lowercase it, or export's exact-membership check would reject it and
+        # silently drop the row.
         tally: Dict[Any, int] = {}
-        for v in norm:
-            tally[v] = tally.get(v, 0) + 1
-        winner, count = max(tally.items(), key=lambda kv: kv[1])
+        canonical: Dict[Any, Any] = {}
+        for v in values:
+            key = self._norm(v)
+            tally[key] = tally.get(key, 0) + 1
+            canonical.setdefault(key, v)  # first-seen original form
+        winner_key, count = max(tally.items(), key=lambda kv: kv[1])
+        winner = canonical[winner_key]
         if vote_mode == "unanimous":
             # Confident only when ALL teachers concur on one valid answer: no
             # abstentions and a single distinct value. Any dissent/abstention
@@ -228,7 +245,7 @@ class _HeuristicTeacher:
             return bool(pos and not neg)
 
         if q.type is QuestionType.SCORE:
-            lo, hi = q.score_range or [1.0, 5.0]
+            lo, hi = q.score_range or DEFAULT_SCORE_RANGE
             intensity = sum(low.count(w) for w in ("urgent", "asap", "angry", "!", "immediately"))
             frac = min(1.0, (len(low) / 240.0) + 0.2 * intensity)
             val = lo + frac * (hi - lo)

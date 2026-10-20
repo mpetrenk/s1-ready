@@ -37,7 +37,14 @@ import os
 import re
 from typing import Any, Callable, Dict, List, Optional
 
-from .types import UNPARSEABLE, Question, QuestionType, Spec, validate_answer
+from .types import (
+    DEFAULT_SCORE_RANGE,
+    UNPARSEABLE,
+    Question,
+    QuestionType,
+    Spec,
+    validate_answer,
+)
 
 
 def get_provider(name) -> Optional["_BaseProvider"]:
@@ -288,7 +295,7 @@ def _label_prompt(text: str, q: Question) -> str:
             f"State: {text}\nQuestion: {q.prompt or q.name}\n"
             "Answer with only 'true' or 'false'."
         )
-    lo, hi = q.score_range or [1.0, 5.0]
+    lo, hi = q.score_range or DEFAULT_SCORE_RANGE
     return (
         f"State: {text}\nQuestion: {q.prompt or q.name}\n"
         f"Answer with a single number between {lo} and {hi}."
@@ -298,13 +305,18 @@ def _label_prompt(text: str, q: Question) -> str:
 def _coerce_answer(raw: str, q: Question) -> Any:
     """Normalize a teacher's raw reply, then validate it strictly.
 
-    Providers are prompted to answer in a canonical one-token form. We take the
-    first non-empty line, strip trailing punctuation, and hand it to the single
-    strict `validate_answer` boundary -- NO substring search. A reply that is
-    not exactly one valid answer returns UNPARSEABLE and is sent to review.
+    Providers are prompted to answer in a canonical one-token form. We validate
+    the ENTIRE reply, not just its first line: a response with more than one
+    non-empty line (e.g. "true\\nActually, false.") is contradictory/overlong
+    and returns UNPARSEABLE rather than silently taking the first token. The
+    single surviving line is stripped of wrapping punctuation and handed to the
+    strict `validate_answer` boundary -- NO substring search.
     """
-    first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")
-    candidate = first.strip().strip(".!?,;:\"'()[]").strip()
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    if len(lines) != 1:
+        # Zero lines (empty) or multiple lines (extra/contradictory content).
+        return UNPARSEABLE
+    candidate = lines[0].strip(".!?,;:\"'()[] ").strip()
     return validate_answer(candidate, q)
 
 
