@@ -316,8 +316,18 @@ def _coerce_answer(raw: str, q: Question) -> Any:
     if len(lines) != 1:
         # Zero lines (empty) or multiple lines (extra/contradictory content).
         return UNPARSEABLE
-    candidate = lines[0].strip(".!?,;:\"'()[] ").strip()
-    return validate_answer(candidate, q)
+    line = lines[0].strip()
+    # Validate the raw trimmed line FIRST: an option (or bool token) may itself
+    # end in punctuation, e.g. an option literally named "Yes!". Only if that
+    # fails do we strip wrapping punctuation and try once more -- so punctuation
+    # cleanup can rescue a noisy reply but never rejects a legitimate answer.
+    answer = validate_answer(line, q)
+    if answer is not UNPARSEABLE:
+        return answer
+    cleaned = line.strip(".!?,;:\"'()[] ").strip()
+    if cleaned == line:
+        return UNPARSEABLE  # nothing was stripped; no second chance needed
+    return validate_answer(cleaned, q)
 
 
 def _extract_json(raw: str) -> Dict[str, Any]:

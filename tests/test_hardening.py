@@ -269,3 +269,37 @@ def test_p2b_multiline_via_callable_through_labeler_flags_row():
     labeled = Labeler(teacher=teacher).label(DataForge(spec).ingest(["x"]))
     assert labeled.rows[0].gold["x"] is None
     assert labeled.rows[0] in labeled.review_queue(min_agreement=0.7)
+
+
+# ---- 7. option values that contain punctuation --------------------------
+# Punctuation cleanup must not reject an option literally named "Yes!" etc.
+# (validate the raw line first, strip punctuation only as a fallback).
+
+PUNCT_Q = Question(
+    name="ans", type=QuestionType.CHOICE,
+    options=["Yes!", "No!", "N/A", "(none)", "A/B"],
+)
+
+
+def test_punctuated_option_values_accepted_exactly():
+    assert _coerce_answer("Yes!", PUNCT_Q) == "Yes!"
+    assert _coerce_answer("No!", PUNCT_Q) == "No!"
+    assert _coerce_answer("N/A", PUNCT_Q) == "N/A"
+    assert _coerce_answer("(none)", PUNCT_Q) == "(none)"
+    assert _coerce_answer("A/B", PUNCT_Q) == "A/B"
+    assert _coerce_answer("yes!", PUNCT_Q) == "Yes!"  # case-insensitive
+
+
+def test_punctuation_cleanup_still_rescues_plain_options():
+    q = Question(name="ans", type=QuestionType.CHOICE, options=["billing", "sales"])
+    assert _coerce_answer("billing.", q) == "billing"
+    assert _coerce_answer("'sales'", q) == "sales"
+    # and genuine non-matches still abstain, never default to options[0]
+    assert _coerce_answer("escalate", q) is UNPARSEABLE
+
+
+def test_punctuated_option_survives_to_export():
+    spec = Spec(use_case="confirm?", questions=[PUNCT_Q])
+    labeled = Labeler(teacher=lambda t, q: "Yes!").label(DataForge(spec).ingest(["ok"]))
+    assert labeled.rows[0].gold["ans"] == "Yes!"
+    assert _export_count(spec, labeled.rows) == 1
