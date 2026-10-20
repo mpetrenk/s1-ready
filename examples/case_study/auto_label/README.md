@@ -7,6 +7,18 @@ unlabeled corpus* well enough to train a decision model.
 
 This experiment tests exactly that.
 
+> **Provenance.** The numbers on this page were produced at commit `9b5fdc2`,
+> before the labeling-hardening change in `adae406` (fail-closed teachers +
+> validate-or-flag answer parsing). That change makes unparseable teacher
+> replies abstain and lower a row's agreement, instead of being silently coerced
+> to a label — so a re-run under the current code would shift the **auto-arm**
+> numbers modestly (the label-quality table and the FT-auto / FT-auto-gated
+> rows). The `ft_human` and `classical` arms are unaffected (they never use the
+> teacher path), and the experiment's conclusions — auto-labeling carries real
+> signal, gating helps, and there is a real price vs. human labels — do not
+> depend on the exact decimals. We kept the original numbers rather than
+> re-spending a GPU + API run to chase small shifts.
+
 ## The protocol
 
 ```
