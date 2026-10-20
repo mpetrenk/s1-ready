@@ -37,7 +37,7 @@ import os
 import re
 from typing import Any, Callable, Dict, List, Optional
 
-from .types import Question, QuestionType, Spec
+from .types import UNPARSEABLE, Question, QuestionType, Spec
 
 
 def get_provider(name) -> Optional["_BaseProvider"]:
@@ -296,16 +296,35 @@ def _label_prompt(text: str, q: Question) -> str:
 
 
 def _coerce_answer(raw: str, q: Question) -> Any:
+    """Parse a teacher's raw reply into a validated answer, or UNPARSEABLE.
+
+    The point is NOT to force every reply into a label. A reply that does not
+    clearly express a member of the option set (or a boolean / in-range number)
+    returns UNPARSEABLE so the Labeler can flag the row for review instead of
+    minting a confident wrong label. This is the fix for "malformed answers
+    become ordinary labels".
+    """
+    low = raw.strip().lower()
     if q.type is QuestionType.BOOL:
-        return raw.strip().lower().startswith(("t", "y", "1"))
+        if re.search(r"\b(true|yes)\b", low) or low in ("1", "t", "y"):
+            return True
+        if re.search(r"\b(false|no)\b", low) or low in ("0", "f", "n"):
+            return False
+        return UNPARSEABLE
     if q.type is QuestionType.SCORE:
         m = re.search(r"-?\d+(\.\d+)?", raw)
-        return float(m.group()) if m else None
-    low = raw.strip().lower()
+        if not m:
+            return UNPARSEABLE
+        val = float(m.group())
+        lo, hi = q.score_range or [1.0, 5.0]
+        # Accept only in-range numbers; an out-of-range reply is a parse failure.
+        return val if lo <= val <= hi else UNPARSEABLE
+    # CHOICE: require an actual option match (exact token or substring).
     for opt in q.options:
-        if opt.lower() in low:
+        ol = opt.lower()
+        if ol == low or re.search(rf"\b{re.escape(ol)}\b", low) or ol in low:
             return opt
-    return q.options[0] if q.options else low
+    return UNPARSEABLE
 
 
 def _extract_json(raw: str) -> Dict[str, Any]:

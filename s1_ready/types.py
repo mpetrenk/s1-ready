@@ -17,6 +17,33 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 
+class _Unparseable:
+    """Sentinel for a teacher answer that could not be validated/parsed.
+
+    A teacher that returns something outside the question's option set (or a
+    non-boolean / non-numeric reply for bool/score) yields this instead of a
+    silently-coerced label. The Labeler treats any UNPARSEABLE vote as a
+    disagreement signal: it lowers agreement and routes the row to the review
+    queue rather than minting a confident wrong label.
+    """
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self):
+        return "UNPARSEABLE"
+
+    def __bool__(self):
+        return False
+
+
+UNPARSEABLE = _Unparseable()
+
+
 class QuestionType(str, Enum):
     """The three decision shapes a System 1 model answers.
 

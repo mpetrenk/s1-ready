@@ -25,7 +25,7 @@ import statistics
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from .forge import DataForge
-from .types import QuestionType, Question, Row, Spec
+from .types import UNPARSEABLE, QuestionType, Question, Row, Spec
 
 # A teacher is anything that, given (state_text, question), returns an answer.
 Teacher = Callable[[str, Question], Any]
@@ -38,14 +38,24 @@ class Labeler:
         self,
         teacher: Union[str, Sequence[str], Sequence[Teacher], None] = None,
         vote: str = "majority",
+        strict: bool = True,
     ):
         """
         teacher : a teacher id, a list of ids, or a list of callables.
                   Defaults to a single `heuristic` teacher.
         vote    : "majority" (plurality wins) or "unanimous" (agreement only
                   counts a win when all teachers concur).
+        strict  : when True (default), a NAMED non-heuristic teacher that cannot
+                  be constructed (missing SDK, bad/absent credentials, unknown
+                  id) raises a RuntimeError instead of silently falling back to
+                  the keyword heuristic. This prevents the dangerous failure the
+                  review flagged: asking for `openai:gpt-4o-mini` and quietly
+                  getting heuristic labels that wear the LLM's name. Set
+                  strict=False only for the no-key demo path, where the
+                  heuristic stand-in is intended.
         """
         self.vote = vote
+        self.strict = strict
         self._teachers: List[tuple] = self._resolve_teachers(teacher)
 
     # -- public API ----------------------------------------------------------
@@ -79,8 +89,18 @@ class Labeler:
         return Row(state=text, gold=gold, agreement=agreement, votes=votes)
 
     def _aggregate(self, q: Question, per_teacher: Dict[str, Any], vote_mode: str):
-        values = list(per_teacher.values())
+        all_values = list(per_teacher.values())
+        if not all_values:
+            return None, 0.0
+
+        total = len(all_values)
+        # An UNPARSEABLE vote is an abstention: it never wins, but it counts
+        # against agreement so any row with an unvalidated answer is pushed
+        # toward the review queue instead of quietly adopting a coerced label.
+        n_unparseable = sum(1 for v in all_values if v is UNPARSEABLE)
+        values = [v for v in all_values if v is not UNPARSEABLE]
         if not values:
+            # Every teacher failed to produce a valid answer -> no gold, flag it.
             return None, 0.0
 
         if q.type is QuestionType.SCORE:
@@ -96,18 +116,20 @@ class Labeler:
             lo, hi = (q.score_range or [1.0, 5.0])
             span = (hi - lo) or 1.0
             spread = (max(nums) - min(nums)) / span
-            return round(mean, 3), round(max(0.0, 1.0 - spread), 3)
+            base = max(0.0, 1.0 - spread)
+            # Penalize agreement by the fraction of teachers that abstained.
+            score = base * (len(nums) / total)
+            return round(mean, 3), round(score, 3)
 
-        # CHOICE / BOOL: categorical vote
+        # CHOICE / BOOL: categorical vote over the valid answers only.
         norm = [self._norm(v) for v in values]
         tally: Dict[Any, int] = {}
         for v in norm:
             tally[v] = tally.get(v, 0) + 1
         winner, count = max(tally.items(), key=lambda kv: kv[1])
-        frac = count / len(norm)
-        if vote_mode == "unanimous" and frac < 1.0:
-            # keep the plurality answer but mark agreement as the winning fraction
-            pass
+        # Agreement is the winning fraction over ALL teachers (abstentions
+        # included), so unparseable votes lower it and surface the row.
+        frac = count / total
         return winner, round(frac, 3)
 
     @staticmethod
@@ -132,20 +154,36 @@ class Labeler:
             resolved.append((str(t), fn))
         return resolved or [("heuristic", _HeuristicTeacher())]
 
-    @staticmethod
-    def _load_named_teacher(name: str) -> Teacher:
-        if name == "heuristic":
-            return _HeuristicTeacher()
-        # Try the optional LLM provider; fall back to heuristic if unavailable.
+    def _load_named_teacher(self, name: str) -> Teacher:
+        # "heuristic" and seeded variants ("heuristic-b", ...) are the built-in
+        # dependency-free teacher. These are never provider lookups, so they
+        # never raise -- the seed just perturbs tie-breaking for demo diversity.
+        if name == "heuristic" or name.startswith("heuristic-"):
+            return _HeuristicTeacher(label=name)
+        # Named non-heuristic teacher: try to construct the provider. In strict
+        # mode, any failure (missing SDK/credentials, or an unrecognized id that
+        # resolves to no provider) raises instead of silently returning the
+        # heuristic. A silent fallback would mint a whole dataset of keyword
+        # labels under the requested model's name.
+        err: Optional[Exception] = None
         try:
             from .providers import get_provider
 
             provider = get_provider(name)
             if provider is not None:
                 return provider.as_teacher()
-        except Exception:
-            pass
-        return _HeuristicTeacher(label=name)  # deterministic stand-in
+        except Exception as e:  # SDK import error, bad creds, etc.
+            err = e
+
+        if self.strict:
+            detail = f" ({err})" if err else ""
+            raise RuntimeError(
+                f"teacher {name!r} could not be constructed{detail}. Install the "
+                f"'[llm]' extra and set the provider credentials (e.g. "
+                f"OPENAI_API_KEY / ANTHROPIC_API_KEY), check the model id, or pass "
+                f"strict=False to allow the heuristic stand-in."
+            )
+        return _HeuristicTeacher(label=name)  # non-strict: deterministic stand-in
 
 
 class _HeuristicTeacher:

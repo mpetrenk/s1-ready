@@ -164,6 +164,20 @@ a 20-line classical model is hard to beat — the LLM route's payoff should grow
 harder tasks (nuance, many classes, paraphrase) where bag-of-words collapses, but
 that is **untested here** and we don't claim it.
 
+**Two caveats on how to read this comparison:**
+- *The classical arm trained on human labels.* Its 0.912 answers "is an LLM
+  worth it when you already have good labels?", not the question s1-ready is for
+  — "is automatic labeling useful when you have none?". In the no-labels setting
+  the library targets, that classical model isn't available as shown; it's a
+  reference point, not a head-to-head competitor.
+- *Gating is a filter, so it can shift the training distribution.* Dropping the
+  rows where teachers disagreed removes the hardest, most ambiguous cases. That
+  raises label quality on what remains, but it also means the fine-tune sees a
+  slightly *easier* slice and may be under-exposed to the borderline inputs. The
+  gated model's gain is real, but part of it is "trained on an easier subset,"
+  not purely "cleaner labels." In a real workflow those dropped rows go to a
+  human and come back corrected, rather than being discarded.
+
 Numbers live in the committed `out_full/four_way_results.json`. Reproduce via
 [`auto_label_colab.ipynb`](auto_label_colab.ipynb) (GPU) after generating the
 balanced datasets with `label_sms.py ... --balance --limit 1000`.

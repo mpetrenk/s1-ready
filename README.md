@@ -243,8 +243,20 @@ def my_model(prompt: str) -> str: ...
 spec = SchemaInferencer.from_prompt(use_case, teacher=my_model)
 ```
 
-If a teacher is unavailable or returns garbage, schema inference falls back to the
-heuristic rather than failing.
+If a teacher is unavailable or returns garbage, *schema inference* falls back to
+the heuristic rather than failing — the inferred schema is a proposal you review
+anyway.
+
+**Labeling fails closed, by design.** `Labeler(teacher=...)` defaults to
+`strict=True`: a named LLM teacher that can't be constructed (missing `[llm]`
+extra, absent/invalid credentials, unknown model id) **raises** instead of
+silently becoming the keyword heuristic — so you never ship a dataset labeled by
+a stand-in that wears the model's name. Pass `strict=False` to opt into the
+heuristic fallback for the no-key demo path. And a teacher reply that isn't a
+validated answer (not a member of the option set, not a parseable bool, or a
+score out of range) is recorded as an **abstention** that lowers the row's
+agreement and routes it to `review_queue()`, rather than being coerced into a
+confident wrong label.
 
 </details>
 
