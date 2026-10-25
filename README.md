@@ -122,8 +122,34 @@ Fine-tuning on the auto-labels works (0.53 → 0.84), the agreement gate improve
 the trained model (+0.06 F1 over raw), and there's an **honest −0.10 F1 price vs.
 human labels** — automatic labeling got ~90% of the way, not all of it. (On this
 lexically-easy task a classical TF-IDF baseline hits 0.91; the LLM route should
-pay off more on harder tasks, untested here.) Full method, caveats, and the
+pay off more on harder tasks — now tested below.) Full method, caveats, and the
 five-way table: **[`auto_label/`](examples/case_study/auto_label/README.md)**.
+
+### Does it generalize beyond spam? A second task (IMDb sentiment)
+
+The whole promise is "any decision over text," so the pipeline was re-run on a
+different task shape — **IMDb movie-review sentiment** (positive vs. negative),
+which turns on phrasing and negation rather than keywords. Same recipe, free
+**local** teachers this time: a **Qwen2.5-3B + Mistral-7B** consensus pair (run
+via Ollama), agreement-gated, Llama-3.1-8B QLoRA fine-tune. The two tasks
+side by side:
+
+| task | teacher-label F1 (gated) | base (zero-shot) | **ft on auto-labels** | classical TF-IDF+NB |
+|---|---:|---:|---:|---:|
+| SMS spam (keyword-driven) | 0.98 | 0.54 | 0.90 | **0.91** |
+| IMDb sentiment (language-driven) | 0.96 | 0.89 | **0.92** | 0.64 |
+
+**The gap inverts, and that's the point.** On keyword-y spam a classical
+bag-of-words baseline narrowly wins; on language-understanding sentiment the
+fine-tuned model beats it by a wide margin (0.92 vs. 0.64) because TF-IDF can't
+see negation or phrasing. Two honest results, one story: **automatic labeling +
+fine-tuning carries its weight exactly where simple baselines fall down** — and
+the free local consensus teachers were strong enough (0.96 label F1) to train on.
+
+> **Caveat — these are indicative small-sample runs**, not headline benchmarks:
+> ~1,000 balanced rows labeled, a trimmed/sampled held-out eval set, and (for
+> IMDb) reviews truncated to 1,500 chars. They establish the *direction* of the
+> effect, not a leaderboard number. Larger, full-eval runs are future work.
 
 Full method + honest "when is this worth it vs. classical ML":
 **[case study](examples/case_study/CASE_STUDY_sms_spam.md)** · reproduce in
