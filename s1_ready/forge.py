@@ -67,29 +67,47 @@ class DataForge:
     ) -> "DataForge":
         """Generate up to `n` synthetic states.
 
-        When `balance=True`, synthesis is steered toward the CHOICE options that
-        are under-represented in the current pool (estimated by keyword
-        presence), so sparse buckets get filled first. The remaining budget is
-        spread across all options round-robin.
+        When `use_llm=True`, the configured `teacher` generates varied, natural
+        in-distribution states for ANY spec type (bool / score / choice) — the
+        LLM needs only the use case and the questions, not a categorical axis.
+        This is the preferred path and is tried first whenever `use_llm=True`.
+
+        The template fallback (used when `use_llm=False`, or when the LLM is
+        unavailable/returns nothing) is categorical-only: with `balance=True` it
+        steers toward under-represented CHOICE options so sparse buckets fill
+        first; with no CHOICE question it can only emit a constant generic
+        filler, which carries no useful variety. For bool/score specs, prefer
+        the LLM path — the template fallback cannot diversify them.
         """
         if n <= 0:
             return self
 
         choice_qs = [q for q in self.spec.questions if q.type is QuestionType.CHOICE]
+        # `targets` steers the TEMPLATE path toward sparse CHOICE buckets. The
+        # LLM path may also use it as a soft hint, but does not require it.
+        targets = (
+            self._balance_targets(choice_qs, n)
+            if (balance and choice_qs)
+            else None
+        )
+
+        # LLM-first: the model can diversify any spec type. Only fall through to
+        # the template/filler path if the LLM is unavailable or yields nothing.
+        if use_llm:
+            llm_states = self._synthesize_with_llm(n, teacher, targets)
+            if llm_states:
+                self.states.extend(llm_states[:n])
+                return self
+            # LLM unavailable or empty -> degraded template fallback below.
+
         if not choice_qs:
-            # No categorical axis to balance; emit generic paraphrase fillers.
+            # Template fallback with no categorical axis: a constant generic
+            # filler is all the template path can produce (no variety). This is
+            # a genuine degradation; callers wanting variety for bool/score must
+            # use the LLM path above.
             for _ in range(n):
                 self.states.append(self._generic_filler())
             return self
-
-        targets = self._balance_targets(choice_qs, n) if balance else None
-
-        if use_llm:
-            llm_states = self._synthesize_with_llm(n, teacher, targets)
-            if llm_states is not None:
-                self.states.extend(llm_states)
-                return self
-            # fall through to template synthesis if LLM unavailable
 
         self._synthesize_templated(choice_qs, n, targets)
         return self

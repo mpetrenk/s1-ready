@@ -114,6 +114,49 @@ def test_forge_ingest_and_synthesize():
     assert sum(s.synthetic for s in forge.states) == 6
 
 
+def test_synthesize_llm_produces_variety_for_bool_spec():
+    """Regression: a BOOL spec (no CHOICE axis) must reach the LLM synthesis
+    path and get VARIED states, not the constant template filler.
+
+    The bug: forge.synthesize() returned at `if not choice_qs` before ever
+    trying the LLM, so a bool/score spec always got N copies of the single
+    `_generic_filler()` string even with use_llm=True + a working teacher.
+    """
+    spec = SchemaInferencer.from_prompt("Flag whether an accomplishment meets STAR criteria")
+    # Sanity: this really is a bool, no-CHOICE spec (the bug's trigger).
+    assert spec.questions[0].type is QuestionType.BOOL
+    assert not any(q.type is QuestionType.CHOICE for q in spec.questions)
+
+    # A deterministic fake teacher: get_provider() wraps any callable
+    # fn(prompt)->str as a provider, so no network/LLM is needed. It returns
+    # n distinct lines, mimicking a real model generating varied states.
+    def fake_teacher(prompt: str) -> str:
+        return "\n".join(f"Synthetic accomplishment example number {i}" for i in range(1, 9))
+
+    forge = DataForge(spec, seed=0).ingest("led a migration\nanswered some tickets")
+    forge.synthesize(n=6, use_llm=True, teacher=fake_teacher)
+
+    synthetic = [s.text for s in forge.states if s.synthetic]
+    assert len(synthetic) == 6
+    # The whole point: the synthetic states are DISTINCT (variety), not 6 copies
+    # of the constant "...filler state for calibration." string.
+    assert len(set(synthetic)) == 6
+    assert all("filler state for calibration" not in t for t in synthetic)
+
+
+def test_synthesize_bool_without_llm_degrades_to_constant_filler():
+    """The honest fallback contract: with use_llm=False (or no teacher) a BOOL
+    spec can only produce the constant template filler — documented, not hidden.
+    Callers that want variety must use the LLM path (see the test above).
+    """
+    spec = SchemaInferencer.from_prompt("Flag whether an accomplishment meets STAR criteria")
+    forge = DataForge(spec, seed=0).ingest("led a migration")
+    forge.synthesize(n=4, use_llm=False)
+    synthetic = [s.text for s in forge.states if s.synthetic]
+    assert len(synthetic) == 4
+    assert len(set(synthetic)) == 1  # constant filler — no variety, by design
+
+
 # ---- labeler ---------------------------------------------------------------
 
 def test_labeler_produces_gold_and_agreement():
